@@ -1,0 +1,4 @@
+(executable
+ (public_name i2pm_gnizamedoc)
+ (name main)
+ (libraries gzd3d))
