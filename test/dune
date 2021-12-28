@@ -1,2 +1,3 @@
-(test
- (name i2pm_gnizamedoc))
+(tests
+ (names langage logique obj)
+ (libraries gzd3d))

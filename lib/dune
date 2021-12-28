@@ -1,3 +1,6 @@
 (library
  (name gzd3d)
- (libraries graphics str))
+ (libraries graphics str unix))
+(ocamllex lexer)
+(menhir
+ (modules parser))

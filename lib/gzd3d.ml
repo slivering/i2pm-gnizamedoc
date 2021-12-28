@@ -1,520 +1,438 @@
-
-
 (*
-#use "topfind";;
-#require "graphics";;
-#require "str";;
+La librairie principale du jeu, GZD (Gnizamedoc).
+Implémente le moteur graphique.
 *)
 
 
-
-(* __________TYPES ET CONSTANTES GLOBALES__________ *)
-
-module Geometrie =
-    struct
-
-        module Point =
-            struct
-                type point = { x: float; y: float; z:float; }
-
-                let origine = { x = 0.; y = 0.; z = 0.; }
-
-            end
-        
-        type triangle = Point.point * Point.point * Point.point
-
-        type objet = triangle array
-
-        open Point
-
-
-        module Vec =
-            struct
-                type vecteur = { vx: float; vy: float; vz:float; }
-
-                let nul = { vx = 0.; vy = 0.; vz = 0.; }
-
-                let of_points point1 point2 = 
-                    {
-                        vx = point2.x -. point1.x;
-                        vy = point2.y -. point1.y;
-                        vz = point2.z -. point1.z;    
-                    }
-                
-                let of_point point = of_points point Point.origine
-
-                let produit_scalaire vec1 vec2 =
-                    vec1.vx *. vec2.vx +. vec1.vy *. vec2.vy +. vec1.vz *. vec2.vz
-                
-                let norme vec = sqrt (produit_scalaire vec vec)
-
-                let unitaire vec =
-                    let n = norme vec in
-                    {
-                        vx = vec.vx /. n;
-                        vy = vec.vy /. n;
-                        vz = vec.vz /. n;
-                    }       
-
-                let produit_vectoriel vec1 vec2 =
-                    {
-                        vx = vec1.vy *. vec2.vz -. vec1.vz *. vec2.vy;
-                        vy = vec1.vz *. vec2.vx -. vec1.vx *. vec2.vz;
-                        vz = vec1.vx *. vec2.vy -. vec1.vy *. vec2.vx;
-                    }
-                
-                let rotation_ox vec angle =
-                    let c = cos angle
-                    and s = sin angle in
-                    {
-                        vx = vec.vx;
-                        vy = c *. vec.vy -. s *. vec.vz;
-                        vz = s *. vec.vy +. c *. vec.vz;
-                    }
-
-                let rotation_oy vec angle =
-                    let c = cos angle
-                    and s = sin angle in
-                    {
-                        vx = c *. vec.vx +. s *. vec.vz;
-                        vy = vec.vy;
-                        vz = (-1.) *. s *. vec.vx +. c *. vec.vz;
-                    }
-            end
-
-
-        module Base =
-            struct
-                type base = Vec.vecteur * Vec.vecteur * Vec.vecteur
-
-                let rotation_ox bs angle =
-                    let i, j, k = bs in
-                    (
-                        Vec.rotation_ox i angle,
-                        Vec.rotation_ox j angle,
-                        Vec.rotation_ox k angle
-                    )
-
-
-                let rotation_oy bs angle =
-                    let i, j, k = bs in
-                    (
-                        Vec.rotation_oy i angle,
-                        Vec.rotation_oy j angle,
-                        Vec.rotation_oy k angle
-                    )
-                
-                let projection bs point =
-                    let vec = Vec.of_point point in
-                    let i, j, k = bs in
-                    {
-                        x = Vec.produit_scalaire vec i;
-                        y = Vec.produit_scalaire vec j;
-                        z = Vec.produit_scalaire vec k;
-                    }
-            end   
-
-    end
-
-
-
-(* Tri par insertion *)
-let tri_clef clef tableau =
-    let valeurs = Array.map clef tableau in
-    for i = 1 to (Array.length tableau) - 1 do
-        let x = tableau.(i)
-        and v = valeurs.(i) in
-        let j = ref (i - 1) in
-        while !j >= 0 && valeurs.(!j) > v do
-        		tableau.(!j + 1) <- tableau.(!j);
-        		valeurs.(!j + 1) <- valeurs.(!j);
-            j := !j - 1;
-        done;
-        tableau.(!j + 1) <- x;
-        valeurs.(!j + 1) <- v;
-    done
-
-module Td =
-    struct
-
-    type 'a tableau_dynamique = {
-        mutable taille: int;
-        mutable support: 'a array;
-    }
-
-    let cree valeur =
-        {taille = 1; support = Array.make 1 valeur}
-
-    let ajoute td valeur =
-        let n = !td.taille in
-        if Array.length !td.support = n then
-            begin
-                !td.support <- Array.append !td.support (Array.make n !td.support.(0));
-                !td.support.(n) <- valeur;
-            end
-        else
-            !td.support.(n) <- valeur;
-        !td.taille <- 1 + n
-
-    let element td indice = !td.support.(indice)
-    end
-
-
-open Geometrie
-open Point
-open Vec
-
-class espace =
-    object (self)
-
-        val mutable x0 = 400.
-        val mutable y0 = 300.
-
-        val mutable zoom = 100.
-
-        val mutable couleur_lumiere = (0, 0, 255)
-        val mutable direction_lumiere = {vx = 0.; vy = 0.; vz = 1.}
-
-        val mutable base = (
-            {vx = 1.; vy = 0.; vz = 0.},
-            {vx = 0.; vy = 1.; vz = 0.},
-            {vx = 0.; vy = 0.; vz = 1.}
-        )
-
-        method translation_axe_ox dx =
-            x0 <- x0 +. dx
-
-        method translation_axe_oy dy =
-            y0 <- y0 +. dy
-
-        method rotation_base_ox angle =
-            base <- Geometrie.Base.rotation_ox base angle
-
-        method rotation_base_oy angle =
-            base <- Geometrie.Base.rotation_oy base angle
-        
-        method zoom_vue coef =
-            zoom <- coef *. zoom
-        
-        method projette2d point zoom =
-            let x = x0 +. zoom *. point.x
-            and y = y0 +. zoom *. point.y
-            in (int_of_float x, int_of_float y)
-        
-        method projette_dans_base point =
-            Geometrie.Base.projection base point
-
-        method cote point = (self#projette_dans_base point).z
-
-        method cote_moyenne point1 point2 point3 =
-            ((self#cote point1) +. (self#cote point2) +. (self#cote point3)) /. 3.
-        
-
-        method ordonne_triangles triangles =
-            let par_cote triangle =
-                let p1, p2, p3 = triangle in self#cote_moyenne p1 p2 p3
-            in tri_clef par_cote triangles
-
-        method trace_triangle point1 point2 point3 =
-            let i = Vec.of_points point1 point2
-            and j = Vec.of_points point1 point3 in
-            let normale = Vec.unitaire (Vec.produit_vectoriel i j) in
-            let v = abs_float (Vec.produit_scalaire normale direction_lumiere) in
-            
-            let echelle v x =
-                int_of_float (v *. (float_of_int x))
-            and projection point =
-                self#projette2d (self#projette_dans_base point) zoom
-            in
-            let p1 = projection point1
-            and p2 = projection point2
-            and p3 = projection point3 in
-            let r, g, b = couleur_lumiere in
-            Graphics.set_color (Graphics.rgb (echelle v r) (echelle v g) (echelle v b));
-            Graphics.fill_poly [| p1; p2; p3 |];
-            Graphics.set_color (Graphics.rgb 0 0 0);
-            Graphics.draw_poly [| p1; p2; p3 |]
-    
-        method algo_peintre triangles =
-            self#ordonne_triangles triangles;
-            let n = Array.length triangles in
-            for i = 1 to n do
-                let p1, p2, p3 = triangles.(n - i) in
-                self#trace_triangle p1 p2 p3;
-            done
-        
-        method algo_peintre_sans_ordonner triangles =
-            let n = Array.length triangles in
-            for i = 1 to n do
-                let p1, p2, p3 = triangles.(n - i) in
-                self#trace_triangle p1 p2 p3;
-            done
-
-
-        (* Il est important d'utiliser cette méthode pour le premier affichage d'un objet. *)
-        method rafraichit objet =
-            Graphics.auto_synchronize false;
-            Graphics.clear_graph ();
-            self#algo_peintre objet;
-            Graphics.auto_synchronize true
-        
-        (* On peut utiliser cette méthode lorsque l'objet a déjà été ordonné. *)
-        method redessine objet =
-            Graphics.auto_synchronize false;
-            Graphics.clear_graph ();
-            self#algo_peintre_sans_ordonner objet;
-            Graphics.auto_synchronize true
-
-        method controle objet =
-            let v_rotation = ref 0.1
-            and v_zoom = ref 1.5 in
-            self#rotation_base_ox 0.5;
-            self#rotation_base_oy 0.3;
-            self#algo_peintre objet;
-            let x_souris = ref (-1)
-            and y_souris = ref (-1)
-            and pressee_avant = ref false in
-            while true do
-                let evt = Graphics.wait_next_event [Graphics.Poll; Graphics.Key_pressed] in
-                if evt.keypressed then
-                    begin
-                        match evt.key with
-                            | 'h' -> self#rotation_base_ox !v_rotation
-                            | 'f' -> self#rotation_base_ox ((-1.) *. !v_rotation)
-                            | 't' -> self#rotation_base_oy !v_rotation
-                            | 'g' -> self#rotation_base_oy ((-1.) *. !v_rotation)
-
-                            | '>' -> self#zoom_vue !v_zoom
-                            | '<' -> self#zoom_vue (1. /. !v_zoom)
-                            | k -> Printf.printf "%c" k;
-                        self#rafraichit objet;
-                    end;
-                if Graphics.button_down () then
-                    begin
-                        let x, y = Graphics.mouse_pos () in
-                        if !pressee_avant then
-                            begin
-                                self#translation_axe_ox (float_of_int (x - !x_souris));
-                                self#translation_axe_oy (float_of_int (y - !y_souris));
-                                self#rafraichit objet;
-                            end;
-                        x_souris := x;
-                        y_souris := y;
-                        pressee_avant := true;
-                    end
-                else
-                    pressee_avant := false;
-                
-            done
-
-        method mouvement_auto objet =
-            self#algo_peintre objet;
-            let v_translation = ref 5.
-            and v_rotation = ref 0.03
-            and distance = ref 0. in
-            self#rafraichit objet;
-            while true do
-                let v = !v_translation *. (log (3. +. !distance /. 30.)) *. sin (0.1 +. !distance /. 150.) in
-                self#translation_axe_ox v;
-                self#translation_axe_oy v;
-                self#rotation_base_ox !v_rotation;
-                self#rotation_base_oy !v_rotation;
-                self#rafraichit objet;
-                distance := !distance +. abs_float v;
-                Unix.sleepf 0.01;
-                if !distance >= 300. then
-                    begin
-                        distance := 0.;
-                        v_translation := (-1.) *. !v_translation;
-                        
-                    end;
-            done
-
-
-    end
-
-
-
-module Fichiers =
-    struct
-
-        let lecture_obj nom_fichier =
-            let fichier = open_in nom_fichier in
-            let points = ref (Td.cree Point.origine) in
-            let triangles = ref (Td.cree (Point.origine, Point.origine, Point.origine)) in
-            begin
-            try
-                while true do
-                    let ligne = input_line fichier in
-                    if (String.length ligne) > 2 then
-                        begin
-                            if ligne.[0] = 'v' && ligne.[1] = ' ' then
-                                Scanf.sscanf ligne "v %f %f %f" (
-                                    fun x y z ->
-                                        Td.ajoute points {x = x; y = y; z = z}
-                                )
-                            else if ligne.[0] = 'f' && ligne.[1] = ' ' then
-                            let parties = Array.of_list (Str.split (Str.regexp "[ \t]+") ligne)
-                            and triangle = Array.make 3 Point.origine in
-                            for i = 1 to 3 do
-                                Scanf.sscanf parties.(i) "%d" (
-                                    fun num_point ->
-                                        triangle.(i - 1) <- Td.element points num_point
-                                )
-                            done;
-                            Td.ajoute triangles (triangle.(0), triangle.(1), triangle.(2))
-                        end
-                done
-            with
-                End_of_file -> close_in fichier
-            end;
-            Array.sub !triangles.support 0 !triangles.taille
-    end
-
-
-
-
-module Langage =
-    struct
-        type instruction = string
-
-        type programme = instruction list
-
-        let calcule_score prog = 0
-
-    end
-
-
+module Algorithmes = Algorithmes
+module Affichage = Affichage
+module Fichiers = Fichiers
+module Geometrie = Geometrie
+module Langage = Langage
+module Labyrinthe = Labyrinthe
+module Lexer = Lexer
+module Parser = Parser
+
+(**
+Transforme un programme sous forme de caractères en une expression.
+Cette fonction est en dehors du module Langage pour éviter des dépendances circulaires.
+*)
+let analyse prog =
+    let lexbuf = Lexing.from_string prog in
+    Parser.main Lexer.lang lexbuf
+
+
+type etat_entrees = {
+    mutable direction: Labyrinthe.direction option;
+    mutable deplacement: Labyrinthe.deplacement;
+    mutable souris_x: int;
+    mutable souris_y: int;
+    mutable souris_pressee: bool;
+    mutable rotation: bool;
+}
+
+(** Constantes graphiques du jeu. *)
 module Jeu =
     struct
-    (* OOP *)
 
-        type point2d = int * int
+        open Geometrie
 
-        type mur = {
-            point1: point2d;
-            point2: point2d;
-            hauteur: int;
-        }
+        let longueur3d_labyrinthe = 300.
 
-        type porte = {
-            point1: point2d;
-            point2: point2d;
-            periode: int;
-        }
+        (** Taille (en 3d) du labyrinthe entier. *)
+        let taille_labyrinthe = ref Labyrinthe.taille_initiale
 
+        let hauteur_mur = 10.
+        let largeur_mur = 5.
+        let longueur_mur () = longueur3d_labyrinthe /. (float_of_int !taille_labyrinthe)
 
-        type trampoline = {
-            point1: point2d;
-            point2: point2d;
-            periode: int;
-        }
+        let couleur_joueur = Graphics.blue
+        let couleur_murs = Graphics.green
+        let couleur_arrivee = Graphics.red
 
+        (** Nombre de rafraichissements de la transition. *)
+        let nombre_frames = 10
 
-        type bonus = {
-            point: point2d;
-            force: int;
-        }
+        (** Temps entre chaque rafraichissement. *)
+        let delai = 1. /. 60.
 
-        type feuille = {
-            point: point2d;
-            voisines: feuille list;
-        }
+        let rayon_joueur () = longueur_mur () /. 3.        
 
+        (** Vecteur correspondant à un décalage vertical d'un mur. *)
+        let vecteur_unitaire_vertical () =
+            let open Vec in
+            { vx = 0.; vy = 0.; vz = longueur_mur () }
 
-        type arbre = {
-            entree: feuille;
-            sortie: feuille;
-        }
-
-
-
-        class joueur =
-            object(self)
-                val mutable x = 0
-                val mutable y = 0
-                val mutable z = 0
-                val mutable batterie = 1.
-
-
-                (* Crée une boule composée de triangles. *)
-                method objet_boule rayon taille_triangles =
-                    0
-            end
+        (** Vecteur correspondant à un décalage horizontal d'un mur. *)
+        let vecteur_unitaire_horizontal () =
+            let open Vec in
+            { vx = ~-.(longueur_mur ()); vy = 0.; vz = 0. }
         
-        class labyrinthe =
-            object(self)
-                val mutable graphe: arbre
-                val mutable murs_verticaux: (mur array) array
-                val mutable murs_horizontaux: (mur array) array
-                val mutable portes: porte array
+        (** Renvoie le vecteur position d'un point en haut à droite de la cellule de coordonnées (i, j). *)
+        let vecteur_position (i, j) =
+            let open Vec in
+            let vec_v = vecteur_unitaire_vertical () in
+            let vec_h = vecteur_unitaire_horizontal () in
+            let vi = vec_v @*. (float_of_int i)
+            and vj = vec_h @*. (float_of_int j) in
+            vi @+ vj
 
-                method cree_mur point1 point2 hauteur = 0
-            end
+        (** Renvoie le vecteur position d'un point au centre de la cellule de coordonnées (i, j). *)
+        let vecteur_position_centre (i, j) =
+            let open Vec in
+            let vec_v = vecteur_unitaire_vertical () in
+            let vec_h = vecteur_unitaire_horizontal () in
+            let vi = vec_v @*. (-0.5 +. float_of_int i)
+            and vj = vec_h @*. (0.5 +. float_of_int j) in
+            vi @+ vj
+        
+        (**
+        Renvoie le vecteur position d'un point
+        entre les centres des cellules aux points point1 et point2
+        déplacé au pourcentage t (avec 0 <= t <= 1).
+        *)
+        let vecteur_position_transition point1 point2 t =
+            let open Vec in
+            assert (0. <= t && t <= 1.);
+            let vec1 = vecteur_position_centre point1
+            and vec2 = vecteur_position_centre point2 in
+            let vec_t = vec2 @- vec1 in
+            vec1 @+ (vec_t @*. t)
         
 
-        class etat_jeu =
-            object(self)
-                val mutable laby: labyrinthe
-                val mutable niveau: int
-                val mutable score: int
+        (** Boule à l'origine du repère, mémoïsée. *)
+        let boule_initiale_joueur =
+            let cache = Hashtbl.create 10 in
+            fun () -> let rayon = rayon_joueur () in match Hashtbl.find_opt cache rayon with
+                | None ->
+                    (*Printf.eprintf "Génération d'une boule de rayon %f\n" rayon;*)
+                    let boule = Objet.boule rayon ~precision:30 ~couleur:couleur_joueur in
+                    Hashtbl.add cache rayon boule;
+                    boule
+                | Some boule -> boule
 
-                (* Algorithme d'exploration exhaustive avec backtracking. *)
-                method genere_labyrinthe largeur hauteur =
-                    
-                    let visitees = Array.make_matrix hauteur largeur
-                    (* FIXME: bonne taille de tableau ? *)
-                    and murs_verticaux = Array.make_matrix (hauteur - 1) (largeur - 1)
-                    and murs_horizontaux = Array.make_matrix (hauteur - 1) (largeur - 1) in
-                    for i = 0 to hauteur - 1 do
-                        for j = 0 to largeur - 1 do
-                            visitees.(i).(j) = false;
-                        done
-                    done;
-                    
-                    
-                    let voisines (x, y) =
-                        List.filter
-                            (fun (i, j) -> i >= 0 && j >= 0 && i < largeur && j < hauteur)
-                            [(x - 1, y); (x, y - 1); (x + 1, y); (x, y + 1)]
-                    in
-                    let enleve_mur (i1, j1) (i2, j2) =
-                        murs_horizontaux.(i1).(j1) = false;
-                        murs_verticaux.(i1).(j1) = false;
-                    in
-
-                    let n = largeur*hauteur - 1 in
-                    let precedentes = Array.make n in
-                    let i_courante = ref Random.int hauteur
-                    and j_courante = Random.int largeur in
-                    visitees.(i_courante).(j_courante) = true;
-                    precedentes.(0) = (i_courante, j_courante);
-                    let murs_enleves = ref 0
-                    and indice_derniere_visitee = ref 0 in
-                    while !murs_enleves < n do
-                        match List.filter
-                            (fun (i, j) -> not visitees.(i).(j))
-                            voisines(i_courante, j_courante)
-                        with
-                            | [] -> decr indice_derniere_visitee
-                            | non_visitees ->
-                            begin
-                                let (i, j) = List.nth non_visitees (Random.int (List.length non_visitees)) in
-
-                                i_courante := i;
-                                j_courante := j;
-                                visitees.(i_courante).(j_courante) = true;
-                                incr murs_enleves;
-                                incr indice_derniere_visitee;
-                            end
-
-                    done;
-                    0
-
-                
-
-            end
+        (** L'objet du point d'arrivée placé à l'origine du repère. *)
+        let case_origine_arrivee () =
+            Objet.case (longueur_mur ()) ~couleur:couleur_arrivee ~precision:1
+        
+        
+        (** Crée l'objet du joueur en transition vers un point. *)
+        let cree_objet_joueur_transition depart dest t =
+            let vec = vecteur_position_transition depart dest t in
+            Objet.translate_objet vec (boule_initiale_joueur ())
 
     end
 
 
+(** Une classe qui contrôle l'état du jeu, l'affichage graphique et les entrées. *)
+class jeu =
+
+    let open Geometrie in
+    object (self)
+        inherit Labyrinthe.evolutif as super
+
+        val mutable espace = new Affichage.espace ~x0:400. ~y0:600. ~zoom:3.
+
+        val mutable entrees = {
+            direction = None;
+            deplacement = Labyrinthe.MouvementNormal;
+            souris_x = -1;
+            souris_y = -1;
+            souris_pressee = false;
+            rotation = false;
+        }
+
+
+        (** Crée l'objet du joueur, mémoïsé. *)
+        method cree_objet_joueur () =            
+            let vec = Jeu.vecteur_position_centre point_joueur in
+            Objet.translate_objet vec (Jeu.boule_initiale_joueur ())
+        
+        (** Crée l'objet du point de l'arrivée. *)
+        method cree_objet_arrivee () =
+            let vec = Jeu.vecteur_position point_arrivee in
+            Objet.translate_objet vec (Jeu.case_origine_arrivee ())
+        
+
+        val mutable cree_objet_labyrinthe_cache = Hashtbl.create 10
+
+        (**
+        Crée l'objet composé des murs du labyrinthe, mémoïsé.
+        On suppose que pour une même valeur de `niveau`, l'état du labyrinthe ne change pas.
+        *)
+        method cree_objet_labyrinthe () =
+            match Hashtbl.find_opt cree_objet_labyrinthe_cache self#niveau with
+                | Some laby -> laby
+                | None ->
+                    (*Printf.eprintf "Génération du labyrinthe au niveau %d\n" self#niveau;*)
+                    let open Vec in
+                    let n = self#taille
+                    and mur_vertical = Objet.mur_vertical
+                        (Jeu.longueur_mur ())
+                        Jeu.largeur_mur
+                        Jeu.hauteur_mur
+                        ~couleur:Jeu.couleur_murs
+                    and mur_horizontal = Objet.mur_horizontal
+                        (Jeu.longueur_mur ())
+                        Jeu.largeur_mur
+                        Jeu.hauteur_mur
+                        ~couleur:Jeu.couleur_murs in
+                    let vec_v = Jeu.vecteur_unitaire_vertical ()
+                    and vec_h = Jeu.vecteur_unitaire_horizontal ()
+                    and mur_v = ref mur_vertical
+                    and mur_h = ref mur_horizontal
+                    and objet = ref [||] in
+
+                    (* Première rangée (extérieure) de murs horizontaux. *)
+                    for _j = 1 to n do
+                        objet := Array.append !objet !mur_h;
+                        mur_h := Objet.translate_objet vec_h !mur_h;
+                    done;
+                    (* Pour chaque rangée : *)
+                    for i = 0 to n-1 do
+                        let fi = float_of_int i in
+                        (* Premier mur vertical extérieur à gauche, rangée i. *)
+                        mur_v := Objet.translate_objet (vec_v @*. fi) mur_vertical;
+                        (* Premier mur horizontal à gauche, en bas de la rangée i. *)
+                        mur_h := Objet.translate_objet (vec_v @*. (fi +. 1.)) mur_horizontal;
+                        objet := Array.append !objet !mur_v;
+                        (* Pour chaque colonne : *)
+                        for j = 0 to n-1 do
+                            mur_v := Objet.translate_objet vec_h !mur_v;
+
+                            if i < n-1 then (
+                                if super#mur (i, j) Horizontal then
+                                    objet := Array.append !objet !mur_h
+                            ) else
+                                (* Dernière rangée de murs horizontaux en bas, colonne j. *)
+                                objet := Array.append !objet !mur_h;
+                            
+                            if j < n-1 then (
+                                if super#mur (i, j) Vertical then
+                                    objet := Array.append !objet !mur_v
+                            ) else
+                                (* Dernier mur vertical à droite, rangée i. *)
+                                objet := Array.append !objet !mur_v;
+                            
+                            mur_h := Objet.translate_objet vec_h !mur_h;
+                        done;
+                    done;
+                    Hashtbl.add cree_objet_labyrinthe_cache self#niveau !objet;
+                    !objet
+
+        
+        (** Ouvre la fenêtre et initialise le jeu. *)
+        method! initialise () =
+            Jeu.taille_labyrinthe := super#taille;
+            super#initialise ();
+            (*super#affiche ();*)
+
+            let k = Float.pi /. 8. in
+            espace#rotation_base_ox k;
+            espace#rotation_base_oy k;
+
+            Graphics.open_graph "";
+            Graphics.resize_window 1600 900;
+
+        (** Affiche la scène et modifie le titre de la fenêtre. *)
+        method! affiche () =
+            let laby = self#cree_objet_labyrinthe ()
+            and joueur = self#cree_objet_joueur ()
+            and arrivee = self#cree_objet_arrivee () in
+            let objet = Array.concat [laby; joueur; arrivee] in
+            espace#rafraichit objet;
+            let title = Printf.sprintf
+                "Niveau : %d____Énergie_dépensée : %d/%d____Coût lors de ce niveau: %d"
+                niveau conso_totale Labyrinthe.cout_maximum conso_niveau in
+            Graphics.set_window_title title;
+        
+        (** Affiche une image du joueur en transition. *)
+        method affiche_transition_joueur depart dest t =
+            let laby = self#cree_objet_labyrinthe ()
+            and joueur = Jeu.cree_objet_joueur_transition depart dest t
+            and arrivee = self#cree_objet_arrivee () in
+            espace#rafraichit (Array.concat [laby; joueur; arrivee]);
+        
+        (** Affiche toutes les images de la transition du joueur en mouvement vers une destination. *)
+        method effectue_transition_joueur depart dest num_frames =
+            (* On n'effectue pas la transition pour des labyrinthes compliqués. *)
+            if niveau < 5 then
+                for i = 1 to num_frames do
+                    let t = (float_of_int i) /. (float_of_int num_frames) in
+                    self#affiche_transition_joueur depart dest t;
+                    Unix.sleepf Jeu.delai;
+                done;
+        
+        method relache_clavier () =
+            entrees.deplacement <- Labyrinthe.MouvementNormal;
+            entrees.direction <- None;
+            entrees.rotation <- false;
+        
+        (** Réagit aux entrées clavier et à la souris pour déplacer le joueur. *)
+        method detecte_entrees () =
+            let open Labyrinthe in
+            if Graphics.key_pressed () then
+            begin
+                let key = Graphics.read_key () in
+                (match key with
+                    | 'w' -> entrees.deplacement <- MouvementRapide
+                    | 'x' -> entrees.deplacement <- Teleportation
+                    | _   -> ());
+                if entrees.direction = None then
+                (* Nouvelle touche directionnelle enfoncée *)
+                begin
+                    (match key with
+                        | 'z' -> entrees.direction <- Some Haut
+                        | 's' -> entrees.direction <- Some Bas
+                        | 'd' -> entrees.direction <- Some Droite
+                        | 'q' -> entrees.direction <- Some Gauche
+                        | _   -> ());
+                    match entrees.direction with
+                        | Some dir -> ignore (self#effectue_deplacement entrees.deplacement dir)
+                        | None -> ()
+
+                end;
+            end
+            else
+                self#relache_clavier ();
+            
+        
+        (**
+        Réagit aux mouvements de la souris et aux entrées clavier pour
+        déplacer et mettre en rotation le labyrinthe.
+        *)
+        method modifie_vue () =
+            if Graphics.key_pressed () then
+                begin
+                if Graphics.read_key () = ' ' then
+                    entrees.rotation <- true
+                end
+            else
+                entrees.rotation <- false;
+            if Graphics.button_down () then
+                begin
+                    let x, y = Graphics.mouse_pos () in
+                    if entrees.souris_pressee then
+                        begin
+                            espace#translation_axe_ox (float_of_int (x - entrees.souris_x));
+                            espace#translation_axe_oy (float_of_int (y - entrees.souris_y));
+                        end;
+                    entrees.souris_x <- x;
+                    entrees.souris_y <- y;
+                    entrees.souris_pressee <- true;
+                end
+            else
+                begin
+                    let x, y = Graphics.mouse_pos () in
+                    if entrees.rotation then
+                    begin
+                        (* Rotation "sur l'axe (Ox) négatif" autour de l'axe (Oy) *)
+                        espace#rotation_base_oy (float_of_int (entrees.souris_x - x) /. 500.);
+                        (* Rotation "sur l'axe (Oy) positif" autour de l'axe (Ox) *)
+                        espace#rotation_base_ox (float_of_int (y - entrees.souris_y) /. 1000.);
+                    end;
+                    entrees.souris_x <- x;
+                    entrees.souris_y <- y;
+                    entrees.souris_pressee <- false;
+                end
+        
+
+        (**
+        Affiche l'animation pour un déplacement du joueur d'un certain type dans une direction.
+        Retourne les valeurs de retour des fonctions correspondante de evolutif (converties en int).
+        Cette fonction est du type Langage.fonction_deplacement.
+        *)
+        method effectue_deplacement depl dir =
+            let open Labyrinthe in
+            let ret = match depl with
+                | MouvementNormal ->
+                begin
+                    let depart = point_joueur in
+                    if super#deplace_joueur dir then
+                        begin
+                            let dest = point_joueur in
+                            self#effectue_transition_joueur depart dest Jeu.nombre_frames;
+                            1
+                        end
+                    else
+                        0
+                end
+                | MouvementRapide ->
+                begin
+                    let depart = point_joueur in
+                    let n = super#deplace_rapidement_joueur dir in
+                    if n > 0 then
+                        begin
+                            let dest = point_joueur in
+                            self#effectue_transition_joueur depart dest Jeu.nombre_frames;
+                        end;
+                    n
+                end
+                | Teleportation ->
+                begin
+                    let depart = point_joueur in
+                    if super#teleporte_joueur dir then
+                        begin
+                            let dest = point_joueur in
+                            self#effectue_transition_joueur depart dest (Jeu.nombre_frames / 2);
+                            1
+                        end
+                    else
+                        0
+                end
+            in
+            (*super#affiche ();*)
+            ret
+        
+        method! augmente_niveau () =
+            super#augmente_niveau ();
+            Jeu.taille_labyrinthe := super#taille;
+        
+        (** Boucle principale du mode joueur. *)
+        method boucle_principale () =
+            while not (super#fini ()) do
+                self#detecte_entrees ();
+                self#modifie_vue ();
+                self#affiche ();
+                Unix.sleepf Jeu.delai;
+                if super#niveau_fini () then
+                    self#augmente_niveau ();
+            done;
+        
+        (** Boucle principale du mode programmeur. *)
+        method boucle_principale_mode_programmeur () =
+            self#affiche ();
+            Unix.sleep 1;
+            ignore (Fichiers.Programme.lance_editeur ());
+            
+            (*
+            while not (Fichiers.Programme.sauvegarde ()) do
+                self#modifie_vue ();
+                self#affiche ();
+                Unix.sleepf Jeu.delai;
+            done;
+            *)
+            
+            (*Printf.eprintf "Analyze du programme...";*)
+            let programme = Fichiers.Programme.lit_fichier () in
+            try
+                let fonc_depl = self#effectue_deplacement in
+                Langage.execute (ref (self :> Labyrinthe.evolutif)) (analyse programme) ~fonc_depl;
+                if super#niveau_fini () then
+                    begin
+                        self#augmente_niveau ();
+                        self#boucle_principale_mode_programmeur ();
+                    end
+                else
+                    begin
+                        Printf.eprintf "L'arrivée n'a pas été atteinte !\n";
+                    end
+            with
+                | Stdlib.Parsing.Parse_error ->
+                    Printf.eprintf "Erreur de compilation\n";
+                    raise Stdlib.Parsing.Parse_error
+                | exc ->
+                    Printf.eprintf "Erreur d'exécution\n";
+                    raise exc
+
+    end

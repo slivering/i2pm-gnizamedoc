@@ -1,0 +1,22 @@
+#!/bin/bash
+
+if [[ -z "$1" ]] || [[ -z "$2" ]]; then
+    # il manque les chemins du fichier du programme et du fichier verrou.
+    exit 3
+fi
+
+# On crée le fichier du programme.
+echo "" > "$1"
+
+# On crée le verrou.
+touch "$2"
+
+# L'éditeur de texte est lancé pour inviter l'utilisateur à sauvegarder son programme.
+if [[ -n "$EDITOR" ]]; then
+    "$EDITOR" "$1"
+else
+    nano "$1"
+fi
+
+# Le programme vient d'être sauvegardé, on enlève le fichier verrou.
+rm "$2"
