@@ -54,9 +54,15 @@ module Jeu =
         let nombre_frames = 10
 
         (** Temps entre chaque rafraichissement. *)
-        let delai = 1. /. 60.
+        let delai = 1. /. 100.
 
-        let rayon_joueur () = longueur_mur () /. 3.        
+        let rayon_joueur () = longueur_mur () /. 3.
+
+        (** L'angle de rotation de la boule du joueur selon l'axe (0x.) *)
+        let theta_x = ref 0.
+
+        (** L'angle de rotation de la boule du joueur selon l'axe (0z.) *)
+        let theta_z = ref 0.
 
         (** Vecteur correspondant à un décalage vertical d'un mur. *)
         let vecteur_unitaire_vertical () =
@@ -100,16 +106,20 @@ module Jeu =
             vec1 @+ (vec_t @*. t)
         
 
-        (** Boule à l'origine du repère, mémoïsée. *)
+        (** Boule à l'origine du repère, orientée d'un certain angle, mémoïsée. *)
         let boule_initiale_joueur =
             let cache = Hashtbl.create 10 in
-            fun () -> let rayon = rayon_joueur () in match Hashtbl.find_opt cache rayon with
-                | None ->
-                    (*Printf.eprintf "Génération d'une boule de rayon %f\n" rayon;*)
-                    let boule = Objet.boule rayon ~precision:30 ~couleur:couleur_joueur in
-                    Hashtbl.add cache rayon boule;
-                    boule
-                | Some boule -> boule
+            fun () ->
+                let rayon = rayon_joueur () in
+                match Hashtbl.find_opt cache (rayon, !theta_x, !theta_z) with
+                    | None ->
+                        (*Printf.eprintf "Génération d'une boule de rayon %f (angles %f %f)\n" rayon !theta_x !theta_z;*)
+                        let boule = Objet.boule rayon ~precision:30 ~couleur:couleur_joueur in
+                        let boule = Objet.rotation_ox_objet boule !theta_x in
+                        let boule = Objet.rotation_oz_objet boule !theta_z in
+                        Hashtbl.add cache (rayon, !theta_x, !theta_z) boule;
+                        boule
+                    | Some boule -> boule
 
         (** L'objet du point d'arrivée placé à l'origine du repère. *)
         let case_origine_arrivee () =
@@ -131,7 +141,7 @@ class jeu =
     object (self)
         inherit Labyrinthe.evolutif as super
 
-        val mutable espace = new Affichage.espace ~x0:400. ~y0:600. ~zoom:3.
+        val mutable espace = new Affichage.espace ~x0:400. ~y0:500. ~zoom:3.
 
         val mutable entrees = {
             direction = None;
@@ -141,6 +151,8 @@ class jeu =
             souris_pressee = false;
             rotation = false;
         }
+
+        val mutable fps = 100
 
 
         (** Crée l'objet du joueur, mémoïsé. *)
@@ -180,9 +192,20 @@ class jeu =
                     let vec_v = Jeu.vecteur_unitaire_vertical ()
                     and vec_h = Jeu.vecteur_unitaire_horizontal ()
                     and mur_v = ref mur_vertical
-                    and mur_h = ref mur_horizontal
-                    and objet = ref [||] in
-
+                    and mur_h = ref mur_horizontal in
+                    let sol =
+                        (*
+                        let open Point in
+                        let l = float_of_int n in
+                        let p1 = { x = 0.; y = Jeu.hauteur_mur; z = ~-.(Jeu.longueur_mur ()) } in
+                        let p2 = (vec_v @*. l) @-> p1 in
+                        let p3 = (vec_h @*. l) @-> p1 in
+                        let p4 = (vec_v @*. l) @-> p3 in
+                        Objet.parallelogramme p1 p2 p4 p3 ~precision:1 ~couleur:(Graphics.rgb 100 100 100)
+                        *)
+                        [||]
+                    in
+                    let objet = ref sol in            
                     (* Première rangée (extérieure) de murs horizontaux. *)
                     for _j = 1 to n do
                         objet := Array.append !objet !mur_h;
@@ -236,15 +259,33 @@ class jeu =
 
         (** Affiche la scène et modifie le titre de la fenêtre. *)
         method! affiche () =
+            let t1 = Unix.gettimeofday () in
             let laby = self#cree_objet_labyrinthe ()
             and joueur = self#cree_objet_joueur ()
             and arrivee = self#cree_objet_arrivee () in
             let objet = Array.concat [laby; joueur; arrivee] in
             espace#rafraichit objet;
+            let t2 = Unix.gettimeofday () in
+            fps <-  int_of_float (1.0 /. (t2 -. t1));
+            self#affiche_stats ();
+
+        
+        method affiche_stats () =
+            Graphics.set_font "-misc-dejavu sans mono-medium-r-normal--24-0-0-0-m-0-iso8859-1";
+            Graphics.moveto 100 50;
+            Graphics.draw_string (Printf.sprintf "Niveau : %d" niveau);
+            Graphics.moveto 100 100;
+            Graphics.draw_string (Printf.sprintf "Energie depensee : %d/%d" conso_totale Labyrinthe.cout_maximum);
+            Graphics.moveto 100 150;
+            Graphics.draw_string (Printf.sprintf "Cout lors de ce niveau : %d" conso_niveau);
+            Graphics.moveto 100 200;
+            Graphics.draw_string (Printf.sprintf "FPS : %d" fps);
+            (*
             let title = Printf.sprintf
                 "Niveau : %d____Énergie_dépensée : %d/%d____Coût lors de ce niveau: %d"
                 niveau conso_totale Labyrinthe.cout_maximum conso_niveau in
             Graphics.set_window_title title;
+            *)
         
         (** Affiche une image du joueur en transition. *)
         method affiche_transition_joueur depart dest t =
@@ -252,12 +293,25 @@ class jeu =
             and joueur = Jeu.cree_objet_joueur_transition depart dest t
             and arrivee = self#cree_objet_arrivee () in
             espace#rafraichit (Array.concat [laby; joueur; arrivee]);
+            self#affiche_stats ();
         
         (** Affiche toutes les images de la transition du joueur en mouvement vers une destination. *)
         method effectue_transition_joueur depart dest num_frames =
             (* On n'effectue pas la transition pour des labyrinthes compliqués. *)
+            let open Vec in            
             if niveau < 5 then
+                let dvec = (Jeu.vecteur_position depart) @- (Jeu.vecteur_position dest) in
+                (* La longueur totale parcourue par le joueur. *)
+                let d = if dvec.vx = 0. then dvec.vz else dvec.vx in
+                (* La variation angulaire absolue entre chaque frame lors du roulement du joueur. *)
+                let d_a = d /. Jeu.rayon_joueur () /. (float_of_int num_frames) in
+
+                let d_angle = Float.copy_sign d_a d in
                 for i = 1 to num_frames do
+                    if d = dvec.vx then
+                        Jeu.theta_z := !Jeu.theta_z +. d_angle
+                    else if d = dvec.vz then
+                        Jeu.theta_x := !Jeu.theta_x +. d_angle;
                     let t = (float_of_int i) /. (float_of_int num_frames) in
                     self#affiche_transition_joueur depart dest t;
                     Unix.sleepf Jeu.delai;
@@ -277,6 +331,7 @@ class jeu =
                 (match key with
                     | 'w' -> entrees.deplacement <- MouvementRapide
                     | 'x' -> entrees.deplacement <- Teleportation
+                    | ' ' -> entrees.rotation <- true
                     | _   -> ());
                 if entrees.direction = None then
                 (* Nouvelle touche directionnelle enfoncée *)
@@ -302,13 +357,6 @@ class jeu =
         déplacer et mettre en rotation le labyrinthe.
         *)
         method modifie_vue () =
-            if Graphics.key_pressed () then
-                begin
-                if Graphics.read_key () = ' ' then
-                    entrees.rotation <- true
-                end
-            else
-                entrees.rotation <- false;
             if Graphics.button_down () then
                 begin
                     let x, y = Graphics.mouse_pos () in
@@ -327,9 +375,9 @@ class jeu =
                     if entrees.rotation then
                     begin
                         (* Rotation "sur l'axe (Ox) négatif" autour de l'axe (Oy) *)
-                        espace#rotation_base_oy (float_of_int (entrees.souris_x - x) /. 500.);
+                        espace#rotation_base_oy (float_of_int (x - entrees.souris_x) /. 500.);
                         (* Rotation "sur l'axe (Oy) positif" autour de l'axe (Ox) *)
-                        espace#rotation_base_ox (float_of_int (y - entrees.souris_y) /. 1000.);
+                        espace#rotation_base_ox (float_of_int (entrees.souris_y -y ) /. 500.);
                     end;
                     entrees.souris_x <- x;
                     entrees.souris_y <- y;
@@ -387,6 +435,17 @@ class jeu =
         method! augmente_niveau () =
             super#augmente_niveau ();
             Jeu.taille_labyrinthe := super#taille;
+            (*
+            Graphics.moveto 400 700;
+            for i = 1 to 31 do
+                self#affiche ();
+                Graphics.moveto 400 700;
+                Graphics.set_text_size 36;
+                let n = 8 * i in
+                Graphics.set_color (Graphics.rgb n n n);
+                Graphics.draw_string "Niveau suivant";
+            done
+            *)
         
         (** Boucle principale du mode joueur. *)
         method boucle_principale () =
@@ -402,18 +461,15 @@ class jeu =
         (** Boucle principale du mode programmeur. *)
         method boucle_principale_mode_programmeur () =
             self#affiche ();
-            Unix.sleep 1;
             ignore (Fichiers.Programme.lance_editeur ());
-            
-            (*
+            (* Nécessaire pour laisser le temps à Bash de créer le fichier verrou. *)
+            Unix.sleep 1;
             while not (Fichiers.Programme.sauvegarde ()) do
                 self#modifie_vue ();
                 self#affiche ();
                 Unix.sleepf Jeu.delai;
             done;
-            *)
-            
-            (*Printf.eprintf "Analyze du programme...";*)
+            assert (not (Sys.file_exists Fichiers.Programme.fichier_verrou));
             let programme = Fichiers.Programme.lit_fichier () in
             try
                 let fonc_depl = self#effectue_deplacement in

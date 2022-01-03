@@ -34,7 +34,7 @@ class espace ~x0 ~y0 ~zoom =
 
         val mutable zoom : float = zoom
 
-        val mutable direction_lumiere = {vx = 0.; vy = 0.; vz = 1.}
+        val mutable direction_lumiere = {vx = 0.2; vy = -0.3; vz = 1.}
 
         val mutable base = (
             {vx = 1.; vy = 0.; vz = 0.},

@@ -5,7 +5,7 @@ Votre robot-boule est enfermé dans un labyrinthe ! Malheureusement, sa batterie
 Il doit consommer le moins d'énergie possible. Serez vous capable de le faire sortir ?
 
 ## Présentation générale
-OKalmaze est un jeu de labyrinthe 3D où le personnage est une boule.
+Gnizamedoc est un jeu de labyrinthe 3D où le personnage est une boule.
 L'utilisateur peut déplacer manuellement ou programmatiquement le personnage
 afin d'atteindre le point d'arrivée avec le moins de déplacements possibles.
 La taille du labyrinthe augmente à chaque niveau.
@@ -103,6 +103,48 @@ La syntaxe du flot de contrôle s'effectue avec des fonctions.
 - `(if expr instr)` : si `expr <> 0` exécute et renvoie `instr`
 - `(ifelse expr instr1 instr2)` : si `expr <> 0` exécute `instr1`, sinon exécute `instr2`; renvoie `expr`
 
+### Exemples
+
+- Le plus simple programme :
+```lisp
+0
+```
+
+- Calcul de la suite de Fibonacci :
+```lisp
+(do
+  (set a 1)
+  (set b 1)
+  (set i 0)
+  (while (gt i 10) (do
+    (set sum (add a b))
+    (set a b)
+    (set b sum)
+    ))
+  )
+```
+
+- Mouvement pseudo-aléatoire :
+```lisp
+(do
+  (set i 23)
+  (while 1) (do
+    (set i (add i 1))
+    (if (eq (mod i 5) 0)
+      (set i (sub i 3)))
+    (set i (mul 2 i))
+    (set i (add (mod i 3) i))
+    (set dir i)
+    (set dir (mod dir 4))
+    (if (lt dir 0)
+      (set dir (mul -1 dir))
+      )
+    (move dir)
+    )
+  )
+)
+```
+
 ### Terminaison
 
 Le programme est automatiquement terminé lorsque le joueur atteint l'arrivée (qui entraîne le passage au niveau suivant).
@@ -111,13 +153,19 @@ le jeu est terminé.
 
 
 ## Compilation
-Vous devez avoir installé OCaml, Dune sur un système de type Unix.
-L'éditeur du programme est donné par la variable `$EDITOR` si elle est définie, sinon `nano`.
+Vous devez avoir installé OCaml, Dune (optionnellement `vscode`) sur un système de type Unix.
+La commande de l'éditeur du programme est donné par la variable `$EDITOR` si elle est définie, sinon `code -w`.
+
+**ATTENTION** :
+- La commande doit être bloquante jusqu'à ce que le fichier est enregistré ou l'éditeur fermé.
+- `nano` lit ne fonctionne pas bien en arrière-plan et n'est donc pas un éditeur compatible.
+
 ### Mode joueur
 ```bash
 dune build
 dune exec ./bin/mode_joueur/main.exe
 ```
+
 ### Mode programmeur
 ```bash
 dune build

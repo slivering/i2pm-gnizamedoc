@@ -50,13 +50,13 @@ type fonction =
 
 
 exception ErreurSyntaxique
-exception FonctionInconnue
+exception FonctionInconnue of string
 exception ArgumentsInvalides
-exception VariableNonDefinie
-exception ModificationConstante
+exception VariableNonDefinie of string
+exception ModificationConstante of string
 exception DivisionParZero
-exception CoordonneesInvalides
-exception DirectionInvalide
+exception CoordonneesInvalides of int * int
+exception DirectionInvalide of int
 
 
 let string_of_expression expr =
@@ -159,7 +159,7 @@ let compile_fonction nom arguments =
         | "while" -> (match arguments with
             | [cdt; expr] -> While (cdt, expr)
             | _ -> raise ArgumentsInvalides)
-        | _ -> raise FonctionInconnue
+        | f -> raise (FonctionInconnue f)
 
 
 
@@ -210,7 +210,7 @@ let execute (laby: Labyrinthe.evolutif ref) ?fonc_depl ?contexte prog =
             | "LEFT" -> 3
             | _ -> (match Hashtbl.find_opt ctx var with
                 | Some v -> v
-                | None -> raise VariableNonDefinie
+                | None -> raise (VariableNonDefinie var)
                 ))
         | Fonction (nom, args) ->
         begin
@@ -228,7 +228,7 @@ let execute (laby: Labyrinthe.evolutif ref) ?fonc_depl ?contexte prog =
                         | "UP"
                         | "DOWN"
                         | "RIGHT"
-                        | "LEFT" -> raise ModificationConstante
+                        | "LEFT" -> raise (ModificationConstante var)
                     | _ -> ());
                     let v = evalue expr in
                     Hashtbl.replace ctx var v;
@@ -248,7 +248,7 @@ let execute (laby: Labyrinthe.evolutif ref) ?fonc_depl ?contexte prog =
                         Bool.to_int ok
                     end
                     else
-                        raise CoordonneesInvalides
+                        raise (CoordonneesInvalides (i, j))
                 | Move expr ->
                     let dir = evalue_direction expr in
                     f_depl MouvementNormal dir
@@ -295,7 +295,7 @@ let execute (laby: Labyrinthe.evolutif ref) ?fonc_depl ?contexte prog =
         | 1 -> Bas
         | 2 -> Droite
         | 3 -> Gauche
-        | _ -> raise DirectionInvalide
+        | dir -> raise (DirectionInvalide dir)
     and evalue_bool expr = ((evalue expr) <> 0)
     in
     ignore (evalue prog)

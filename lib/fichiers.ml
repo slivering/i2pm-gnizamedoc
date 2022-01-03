@@ -72,18 +72,18 @@ module Programme =
     let fichier_programme = "/tmp/i2pm-gnizamedoc_program.okamlmaze"
     let fichier_verrou = "/tmp/i2pm-gnizamedoc.lock"
 
-    let commande = Printf.sprintf "./lib/code-editor %s %s" fichier_programme fichier_verrou
+    let commande = Printf.sprintf "bash ./lib/code-editor %s %s &" fichier_programme fichier_verrou
 
     (**
     Lance l'éditeur externe dans le terminal en arrière-plan,
-    et renvoie son status de terminaison sous forme de promesse.
+    et renvoie son status de terminaison.
     *)
     let lance_editeur () =
         Unix.system commande
     
     (** Indique si le fichier a été sauvegardé. *)
     let sauvegarde () =
-        Sys.file_exists fichier_verrou
+        not (Sys.file_exists fichier_verrou)
     
     (**
     Lit dans le fichier puis renvoie le programme sous forme de chaîne de caractèprocessus.

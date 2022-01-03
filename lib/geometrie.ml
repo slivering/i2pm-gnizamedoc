@@ -84,7 +84,8 @@ module Vec =
         let ( @. ) vec1 vec2 =
             vec1.vx *. vec2.vx +. vec1.vy *. vec2.vy +. vec1.vz *. vec2.vz
         
-        
+        let to_point vec = vec @-> Point.origine
+
         let norme vec = sqrt (vec @. vec)
 
         (** Vecteur positivement colinéaire et de norme 1. *)
@@ -127,7 +128,16 @@ module Vec =
             {
                 vx = c *. vec.vx +. s *. vec.vz;
                 vy = vec.vy;
-                vz = (-1.) *. s *. vec.vx +. c *. vec.vz;
+                vz = ~-. s *. vec.vx +. c *. vec.vz;
+            }
+        
+        let rotation_oz vec angle =
+            let c = cos angle
+            and s = sin angle in
+            {
+                vx = c *. vec.vx -. s *. vec.vy;
+                vy = s *. vec.vx +. c *. vec.vy;
+                vz = vec.vz;
             }
     end
 
@@ -157,6 +167,14 @@ module Base =
                 Vec.rotation_oy i angle,
                 Vec.rotation_oy j angle,
                 Vec.rotation_oy k angle
+            )
+    
+        let rotation_oz bs angle =
+            let i, j, k = bs in
+            (
+                Vec.rotation_oz i angle,
+                Vec.rotation_oz j angle,
+                Vec.rotation_oz k angle
             )
         
         (** Projette un point en coordonnées absolues en coordonnées d'une base. *)
@@ -189,16 +207,46 @@ x <____y(.)_ _ _            L'observateur est dans l'infini de (Oz) négatif.
 module Objet =
     struct
 
+        let modifie_objet f objet =
+            let nouveau = Array.copy objet in
+            for i = 0 to Array.length objet - 1 do
+                let (point1, point2, point3, couleur) = objet.(i) in
+                nouveau.(i) <- (f point1, f point2, f point3, couleur);
+            done;
+            nouveau
+
         (** Translate tous les points de l'objet par un vecteur et préserve l'ordre et la couleur. *)
         let translate_objet vec objet =
             let open Vec in
             let tr point = vec @-> point in
-            let nouveau = Array.copy objet in
-            for i = 0 to Array.length objet - 1 do
-                let (point1, point2, point3, couleur) = objet.(i) in
-                nouveau.(i) <- (tr point1, tr point2, tr point3, couleur);
-            done;
-            nouveau
+            modifie_objet tr objet
+
+        (**
+        Tourne tous les points de l'objet autour de l'axe (Ox) d'un certain angle
+        et préserve l'ordre et la couleur.
+        *)
+        let rotation_ox_objet objet angle =
+            let open Vec in
+            let rot point = to_point @@ rotation_ox (of_point point) angle in
+            modifie_objet rot objet
+        
+        (**
+        Tourne tous les points de l'objet autour de l'axe (Oy) d'un certain angle
+        et préserve l'ordre et la couleur.
+        *)
+        let rotation_oy_objet objet angle =
+            let open Vec in
+            let rot point = to_point @@ rotation_oy (of_point point) angle in
+            modifie_objet rot objet
+        
+        (**
+        Tourne tous les points de l'objet autour de l'axe (Oz) d'un certain angle
+        et préserve l'ordre et la couleur.
+        *)
+        let rotation_oz_objet objet angle =
+            let open Vec in
+            let rot point = to_point @@ rotation_oz (of_point point) angle in
+            modifie_objet rot objet
 
         (** Un parallélogramme formé de points (donnés en arguments dans le sens du tracé.) *)
         let parallelogramme point1 point2 point3 point4 ~precision ~couleur =
@@ -247,7 +295,7 @@ module Objet =
             let open Point in
             let pi = Float.pi in
             let n_triangles = 2 * precision * precision in
-            let cote_triangle = 2. *. rayon *. sqrt (pi /. (float_of_int (n_triangles/2))) in
+            let cote_triangle = 2.0 *. rayon *. sqrt (pi /. (float_of_int (n_triangles/2))) in
             let triangles = Array.make n_triangles triangle_nul in
             for i_theta = 1 to precision do
                 for i_phi = 1 to precision do

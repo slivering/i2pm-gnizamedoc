@@ -15,7 +15,7 @@ touch "$2"
 if [[ -n "$EDITOR" ]]; then
     "$EDITOR" "$1"
 else
-    nano "$1"
+    code -w "$1"
 fi
 
 # Le programme vient d'être sauvegardé, on enlève le fichier verrou.
