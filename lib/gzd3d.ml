@@ -95,15 +95,20 @@ module Jeu =
         (**
         Renvoie le vecteur position d'un point
         entre les centres des cellules aux points point1 et point2
-        déplacé au pourcentage t (avec 0 <= t <= 1).
+        selon une interpolation sinusoïdale de paramètre t (avec 0 <= t <= 1).
         *)
         let vecteur_position_transition point1 point2 t =
             let open Vec in
             assert (0. <= t && t <= 1.);
             let vec1 = vecteur_position_centre point1
             and vec2 = vecteur_position_centre point2 in
+            (*
+            Pour une interpolation linéaire :
             let vec_t = vec2 @- vec1 in
             vec1 @+ (vec_t @*. t)
+            *)
+            let vec_t = vec2 @- vec1 in
+            vec1 @+ (vec_t @*. (sin (Float.pi /. 2.0 *. t)))
         
 
         (** Boule à l'origine du repère, orientée d'un certain angle, mémoïsée. *)

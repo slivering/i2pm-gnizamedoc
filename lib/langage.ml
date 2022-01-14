@@ -299,6 +299,3 @@ let execute (laby: Labyrinthe.evolutif ref) ?fonc_depl ?contexte prog =
     and evalue_bool expr = ((evalue expr) <> 0)
     in
     ignore (evalue prog)
-
-
-let calcule_score prog = List.length prog
