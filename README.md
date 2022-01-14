@@ -230,6 +230,14 @@ est implémenté dans `lexer.mll`, `parser.mly` et `langage.ml` et des exemples 
 
 ## Limitations et pistes d'améliorations
 
+### Bugs
+#### Graphics ne trouve pas la police d'écriture correcte
+Ce genre d'erreur est difficile à éviter car l'implémentation de cette fonctionnalité de Graphics
+dépend de la plateforme. Par défaut, la méthode `Gzd3d.jeu#affiche_stats` utilise la police
+Deja Vu Sans Mono Medium (`-misc-dejavu sans mono-medium-r-normal--24-0-0-0-m-0-iso8859-1`).
+
+Pour corriger le bug, enlevez cette ligne (mais l'affichage de la police sera inadéquat).
+
 ### Performance
 Il est possible que le rendu du labyrinthe ralentisse pour des niveaux élevés.
 Comme la plupart des objets ne se chevauchent pas, l'implémentation de l'algorithme du peintre
