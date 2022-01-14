@@ -157,7 +157,7 @@ Vous devez avoir installé OCaml, Dune (optionnellement `vscode`) sur un systèm
 La commande de l'éditeur du programme est donné par la variable `$EDITOR` si elle est définie, sinon `code -w`.
 
 **ATTENTION** :
-- La commande doit être bloquante jusqu'à ce que le fichier est enregistré ou l'éditeur fermé.
+- La commande de l'éditeur doit être bloquante jusqu'à ce que le fichier est enregistré ou l'éditeur fermé.
 - `nano` lit ne fonctionne pas bien en arrière-plan et n'est donc pas un éditeur compatible.
 
 ### Mode joueur

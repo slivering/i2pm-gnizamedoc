@@ -96,7 +96,7 @@ let test_cube () =
 let test_obj () = 
     Graphics.open_graph "";
     Graphics.resize_window 800 600;
-    let objet = Fichiers.lecture_obj "./assets/teapot.obj" in
+    let objet = Fichiers.lecture_obj "./assets/ourson.obj" in
     let espace = new Affichage.espace ~x0:400. ~y0:300. ~zoom:50. in
     mouvement_auto espace objet
 

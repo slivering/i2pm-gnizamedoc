@@ -323,7 +323,7 @@ class jeu =
             entrees.rotation <- false;
         
         (** Réagit aux entrées clavier et à la souris pour déplacer le joueur. *)
-        method detecte_entrees () =
+        method detecte_entrees ~controle_joueur =
             let open Labyrinthe in
             if Graphics.key_pressed () then
             begin
@@ -333,7 +333,7 @@ class jeu =
                     | 'x' -> entrees.deplacement <- Teleportation
                     | ' ' -> entrees.rotation <- true
                     | _   -> ());
-                if entrees.direction = None then
+                if entrees.direction = None && controle_joueur then
                 (* Nouvelle touche directionnelle enfoncée *)
                 begin
                     (match key with
@@ -450,7 +450,7 @@ class jeu =
         (** Boucle principale du mode joueur. *)
         method boucle_principale () =
             while not (super#fini ()) do
-                self#detecte_entrees ();
+                self#detecte_entrees ~controle_joueur:true;
                 self#modifie_vue ();
                 self#affiche ();
                 Unix.sleepf Jeu.delai;
@@ -465,6 +465,7 @@ class jeu =
             (* Nécessaire pour laisser le temps à Bash de créer le fichier verrou. *)
             Unix.sleep 1;
             while not (Fichiers.Programme.sauvegarde ()) do
+                self#detecte_entrees ~controle_joueur:false;
                 self#modifie_vue ();
                 self#affiche ();
                 Unix.sleepf Jeu.delai;
